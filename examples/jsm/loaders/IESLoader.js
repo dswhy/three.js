@@ -8,13 +8,15 @@ import {
 	UnsignedByteType,
 	LinearFilter,
 	HalfFloatType,
-	DataUtils
+	DataUtils,
+	RepeatWrapping
 } from 'three';
 
 /**
  * A loader for the IES format.
  *
- * The loaded texture should be assigned to {@link IESSpotLight#map}.
+ * The loaded texture should be assigned to {@link IESSpotLight#iesMap}. Its `u` axis is the
+ * inclination from the beam axis and its `v` axis the azimuth around it, one texel per degree.
  *
  * ```js
  * const loader = new IESLoader();
@@ -98,6 +100,9 @@ class IESLoader extends Loader {
 			const t1 = deltaTheta === 0 ? 0 : ( theta - startTheta ) / deltaTheta;
 			const t2 = ( phi - startPhi ) / deltaPhi;
 
+			if ( t2 < 0 || t2 > 1 ) // Outside the measured inclinations: no light, no extrapolation
+				return 0;
+
 			const nextThetaIndex = deltaTheta === 0 ? thetaIndex : thetaIndex + 1;
 
 			const v1 = MathUtils.lerp( iesLamp.candelaValues[ thetaIndex ][ phiIndex ], iesLamp.candelaValues[ nextThetaIndex ][ phiIndex ], t1 );
@@ -114,6 +119,7 @@ class IESLoader extends Loader {
 
 			let theta = i % width;
 			const phi = Math.floor( i / width );
+			const row = theta; // azimuth row of the texture, before symmetry folding
 
 			if ( endTheta - startTheta !== 0 && ( theta < startTheta || theta >= endTheta ) ) { // Handle symmetry for hor angles
 
@@ -124,7 +130,7 @@ class IESLoader extends Loader {
 
 			}
 
-			data[ phi + theta * height ] = interpolateCandelaValues( phi, theta );
+			data[ phi + row * height ] = interpolateCandelaValues( phi, theta );
 
 		}
 
@@ -178,9 +184,10 @@ class IESLoader extends Loader {
 		const iesLamp = new IESLamp( text );
 		const data = this._getIESValues( iesLamp, type );
 
-		const texture = new DataTexture( data, 180, 1, RedFormat, type );
+		const texture = new DataTexture( data, 180, 360, RedFormat, type );
 		texture.minFilter = LinearFilter;
 		texture.magFilter = LinearFilter;
+		texture.wrapT = RepeatWrapping;
 		texture.needsUpdate = true;
 
 		return texture;
